@@ -7,6 +7,8 @@
 from socket import *
 import time
 import threading
+import client
+import queue
 
 # Imports the Google Cloud client library
 from google.cloud import speech
@@ -36,8 +38,8 @@ try:
         global datas
         time.sleep(8)
         while True:
-            time.sleep(5)
-            if(len(datas)<=0):
+            #time.sleep(5)
+            if(datas.qsize()<=0):
                 time.sleep(5)
                 continue
             else:
@@ -45,8 +47,9 @@ try:
                 lock = threading.Lock()
                 lock.acquire()
 
-                content=bytes(datas[:])
+                content=bytes(datas.get())
                 #print("content",len(content))
+
                 datas.clear()
                 #print("id",id(datas))
 
@@ -66,7 +69,7 @@ try:
         lock.acquire()
         #print("data:",len(data))
         #print("datas",len(datas))
-        datas=datas+data
+        datas.put(data)
         #print("datas",len(datas))
 
         lock.release()
@@ -74,12 +77,12 @@ try:
 
     # function for syncronized adding client : add client information(number of id:connection socket object) to shared dictionary
     # by using lock, there is no concurrency issue.
-    def add_client(id,ls,connect_sock):
+    def add_client(id,ls,c):
 
         lock = threading.Lock()
         lock.acquire()
 
-        ls[id]=connect_sock
+        ls[id]=c
         print( "Client {0} connected. Number of connected clients = {1}".format(id,len(ls)))
 
         lock.release()
@@ -98,48 +101,51 @@ try:
 
 
     # function for each client thread : communicate with each client
-    def client_thread(connectionSocket, clientAddress,id,counter_list):
+    def client_thread(counter_list,c):
         global datas
 
-        add_client(id,counter_list,connectionSocket)
+        id=c.getName()
+        add_client(id,counter_list,c)
+        timer=time.time()
 
         while True:
             # receive binary data(ex-audio) from connected client
             try:
-                data = connectionSocket.recv(4096)
+                data = c.getSock().recv(4096)
             except Exception :
                 break
 
 
             if data:
                 #print(len(data))
-                add_data(data)
+                c.add(data)
 
 
-            else:
-                # if client socket close, then message received from connection socket is empty.
-                # so exit while loop, and close connection socket
-                break
+            if(time.time()-timer>5):
+                #add_data(c.getAll())
+                datas.put(c.getAll())
+                timer=time.time()
 
 
         # if connection is closed, then delete client information in client dictionary and close connection socket.
-        del_client(id,counter_list)
-        connectionSocket.close()
+        del_client(counter_list,id)
+        c.getSock().close()
+        del c
 
 
     # make welcome socket
     serverPort = 12000
     serverSocket = socket(AF_INET, SOCK_STREAM)
     serverSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-    serverSocket.bind(('', serverPort)) #serverSocket.bind(('ec2-52-79-239-124.ap-northeast-2.compute.amazonaws.com', serverPort))
+    serverSocket.bind(('', serverPort))
     serverSocket.listen(1)
     print("The server is ready to receive on port", serverPort)
 
     # make client dictionary and id value for new client
-    client_list={}
+    client_list={} # client dictinoray is comprised of userID:clientObject
     id_counter=1
-    global datas
-    datas=bytearray()
+    global datas # total audio queue
+    datas=queue.Queue()
     tt=threading.Thread(target= audio2caption,args=())
     tt.daemon=True
     tt.start()
@@ -150,9 +156,13 @@ try:
 
         # wait client connection.if connection request exist, make socket for client (=connection socket)
         (connectionSocket, clientAddress) = serverSocket.accept()
+        c=client()
+        c.setSock(connectionSocket)
+        c.setAddress(clientAddress)
+        c.setName(id_counter)
 
         # make thread and give socket and client ID
-        t=threading.Thread(target=client_thread,args=(connectionSocket, clientAddress,id_counter,client_list))
+        t=threading.Thread(target=client_thread,args=(client_list,c))
         t.daemon=True
         t.start()
         id_counter+=1

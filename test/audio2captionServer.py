@@ -31,7 +31,7 @@ config = speech.RecognitionConfig(
 
 
 try:
-    # function for timer thread : every 5 sec send bytes to STT api
+    # function for STT thread : every 5 sec send bytes to STT api
     def audio2caption():
         global datas
         time.sleep(8)
@@ -44,9 +44,10 @@ try:
                 lock = threading.Lock()
                 lock.acquire()
 
-                content=bytes(datas)
+                content=bytes(datas[:])
                 #print("content",len(content))
-                datas=bytearray()
+                datas.clear()
+                print("id",id(datas))
 
                 lock.release()
                 audio = speech.RecognitionAudio(content=content)

@@ -47,19 +47,23 @@ try:
                 lock = threading.Lock()
                 lock.acquire()
 
-                content=bytes(datas.get())
+                item=datas.get()
+                lock.release()
+
+                content=bytes(item[1])
                 #print("content",len(content))
 
 
                 #print("id",id(datas))
 
-                lock.release()
+
                 audio = speech.RecognitionAudio(content=content)
                 response = stt_client.recognize(config=config, audio=audio)
                 #print("im in")
                 for result in response.results:
                     #print("im in2")
-                    print("Transcript: {}".format(result.alternatives[0].transcript))
+                    #print(type(result.alternatives[0].transcript))
+                    print("{}: {}".format(item[0],result.alternatives[0].transcript))
 
 
     def add_data(data):
@@ -123,7 +127,7 @@ try:
 
             if(time.time()-timer>5):
                 #add_data(c.getAll())
-                datas.put(c.getAll())
+                datas.put((c.getName(),c.getAll()))
                 timer=time.time()
 
 
@@ -157,9 +161,15 @@ try:
         # wait client connection.if connection request exist, make socket for client (=connection socket)
         (connectionSocket, clientAddress) = serverSocket.accept()
         c=client.client()
+        data = connectionSocket.recv(4096)
+        if data:
+            c.setName(data.decode())
+        else:
+            c.setName(id_counter)
+
         c.setSock(connectionSocket)
         c.setAddress(clientAddress)
-        c.setName(id_counter)
+
 
         # make thread and give socket and client ID
         t=threading.Thread(target=client_thread,args=(client_list,c))

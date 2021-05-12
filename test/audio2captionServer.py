@@ -36,6 +36,7 @@ try:
         global datas
         time.sleep(8)
         while True:
+            time.sleep(5)
             if(len(datas)<=0):
                 time.sleep(5)
                 continue
@@ -47,7 +48,7 @@ try:
                 content=bytes(datas[:])
                 #print("content",len(content))
                 datas.clear()
-                print("id",id(datas))
+                #print("id",id(datas))
 
                 lock.release()
                 audio = speech.RecognitionAudio(content=content)
@@ -104,7 +105,10 @@ try:
 
         while True:
             # receive binary data(ex-audio) from connected client
-            data = connectionSocket.recv(4096)
+            try:
+                data = connectionSocket.recv(4096)
+            except Exception :
+                break
 
 
             if data:

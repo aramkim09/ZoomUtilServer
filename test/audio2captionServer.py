@@ -17,7 +17,7 @@ import os
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]='/home/ubuntu/workspace/stt/stt_key/rock-idiom-279803-becd74ae58f1.json'
 
 # Instantiates a client
-client = speech.SpeechClient()
+stt_client = speech.SpeechClient()
 
 speech_context = speech.SpeechContext(phrases=["$TIME"]) # read file and add context
 
@@ -50,12 +50,12 @@ try:
                 content=bytes(datas.get())
                 #print("content",len(content))
 
-                datas.clear()
+
                 #print("id",id(datas))
 
                 lock.release()
                 audio = speech.RecognitionAudio(content=content)
-                response = client.recognize(config=config, audio=audio)
+                response = stt_client.recognize(config=config, audio=audio)
                 #print("im in")
                 for result in response.results:
                     #print("im in2")
@@ -128,7 +128,7 @@ try:
 
 
         # if connection is closed, then delete client information in client dictionary and close connection socket.
-        del_client(counter_list,id)
+        del_client(id,counter_list)
         c.getSock().close()
         del c
 
@@ -156,7 +156,7 @@ try:
 
         # wait client connection.if connection request exist, make socket for client (=connection socket)
         (connectionSocket, clientAddress) = serverSocket.accept()
-        c=client()
+        c=client.client()
         c.setSock(connectionSocket)
         c.setAddress(clientAddress)
         c.setName(id_counter)
@@ -174,6 +174,6 @@ try:
 except KeyboardInterrupt:
     # if there is KeyboardInterrupt, then close all socket and finish the program.
     for i in client_list:
-        client_list[i].close()
+        client_list[i].getSock().close()
     serverSocket.close()
     print("\nBye bye~")

@@ -112,7 +112,7 @@ try:
     def client_thread(counter_list,c):
         global dataQ
         global sessionName
-
+        #f=open("zoom.raw","wb")
         id=c.getName()
         add_client(id,counter_list,c)
         timer=time.time()
@@ -169,7 +169,9 @@ try:
 
             if(time.time()-timer>5):
                 #pass
-                dataQ.put((c.getTime(),c.getName(),c.getAll()))
+                temp=c.getAll()
+                #f.write(bytes(temp)) #for test
+                dataQ.put((c.getTime(),c.getName(),temp))
                 c.resetTime()
                 timer=time.time()
 
@@ -226,6 +228,7 @@ try:
 
 except KeyboardInterrupt:
     # if there is KeyboardInterrupt, then close all socket and finish the program.
+    # soon add stopping all sub thread
 
     print("all transcript")
     while(talkQ.qsize()>0):

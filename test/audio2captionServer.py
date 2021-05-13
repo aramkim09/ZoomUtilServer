@@ -11,9 +11,9 @@ import client
 import queue
 
 # Imports the Google Cloud client library
-#from google.cloud import speech
+from google.cloud import speech
 import os
-"""
+
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]='/home/ubuntu/workspace/stt/stt_key/rock-idiom-279803-becd74ae58f1.json'
 
 # Instantiates a client
@@ -27,16 +27,17 @@ config = speech.RecognitionConfig(
     language_code="ko-KR",
     speech_contexts=[speech_context],
 )
-"""
+
 
 
 
 
 try:
-    """
+
     # function for STT thread : every 5 sec send bytes to STT api
     def audio2caption():
         global dataQ
+        global talkQ
         time.sleep(8)
         while True:
             #time.sleep(5)
@@ -51,7 +52,7 @@ try:
                 item=dataQ.get()
                 lock.release()
 
-                content=bytes(item[1])
+                content=bytes(item[2])
                 #print("content",len(content))
 
 
@@ -64,8 +65,9 @@ try:
                 for result in response.results:
                     #print("im in2")
                     #print(type(result.alternatives[0].transcript))
-                    print("{}: {}".format(item[0],result.alternatives[0].transcript))
-    """
+                    print("[{}] {}: {}".format(item[0],item[1],result.alternatives[0].transcript))
+                    talkQ.put((item[0],item[1],result.alternatives[0].transcript))
+
 
 
     def add_data(data):
@@ -144,13 +146,13 @@ try:
                     pass
                 elif(data_type==4):
                     # type = audioRawdata
-                    print("data_type:",data_type)
-                    print("data_size:",data_size)
-                    print("total_size",len(data))
+                    #print("data_type:",data_type)
+                    #print("data_size:",data_size)
+                    #print("total_size",len(data))
                     timestamp=data[5:13].decode()
-                    print(timestamp)
+                    #print(timestamp)
 
-                    c.add(data[13:])
+                    c.add(timestamp,data[13:])
                 elif(data_type==5):
                     # type = fileName
                     pass
@@ -166,15 +168,16 @@ try:
 
 
             if(time.time()-timer>5):
-                pass
-                #dataQ.put((c.getName(),c.getAll()))
-                #timer=time.time()
+                #pass
+                dataQ.put((c.getTime(),c.getName(),c.getAll()))
+                c.resetTime()
+                timer=time.time()
 
 
         # if connection is closed, then delete client information in client dictionary and close connection socket.
-        f=open("zoom.raw","wb")
-        f.write(bytes(c.getAll()))
-        f.close()
+        #f=open("zoom.raw","wb")
+        #f.write(bytes(c.getAll()))
+        #f.close()
         del_client(id,counter_list)
         c.getSock().close()
         del c
@@ -193,11 +196,14 @@ try:
     id_counter=1
     global dataQ # total audio queue
     dataQ=queue.Queue()
+    global talkQ
+    talkQ=queue.Queue()
     global sessionName
     sessionName=""
-    #tt=threading.Thread(target= audio2caption,args=())
-    #tt.daemon=True
-    #tt.start()
+    thread_list=[]
+    tt=threading.Thread(target= audio2caption,args=())
+    tt.daemon=True
+    tt.start()
 
 
 
@@ -211,6 +217,7 @@ try:
         t=threading.Thread(target=client_thread,args=(client_list,c))
         t.daemon=True
         t.start()
+        #thread_list.append(t)
         id_counter+=1
 
 
@@ -219,6 +226,11 @@ try:
 
 except KeyboardInterrupt:
     # if there is KeyboardInterrupt, then close all socket and finish the program.
+
+    print("all transcript")
+    while(talkQ.qsize()>0):
+        i=talkQ.get()
+        print("[",i[0],"]",i[1],":",i[2])
     for i in client_list:
         client_list[i].getSock().close()
     serverSocket.close()

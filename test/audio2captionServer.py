@@ -9,7 +9,7 @@ import time
 import threading
 import client
 import queue
-
+"""
 # Imports the Google Cloud client library
 from google.cloud import speech
 import os
@@ -28,12 +28,12 @@ config = speech.RecognitionConfig(
     speech_contexts=[speech_context],
 )
 
-
+"""
 
 
 
 try:
-
+    """
     # function for STT thread : every 5 sec send bytes to STT api
     def audio2caption():
         global dataQ
@@ -67,6 +67,7 @@ try:
                     #print(type(result.alternatives[0].transcript))
                     print("[{}] {}: {}".format(item[0],item[1],result.alternatives[0].transcript))
                     talkQ.put((item[0],item[1],result.alternatives[0].transcript))
+    """
 
 
 
@@ -123,63 +124,73 @@ try:
                 data = c.getSock().recv(4096)
             except Exception :
                 break
+            if(data):
+                while(True):
+                    data_type=data[0]
+                    data_size=int.from_bytes(data[1:5], "big")
 
+                    if(data_type==0):
+                        # type = set sesssionName
+                        sessionName=data[5:data_size+5].decode()
+                        if(len(data)>data_size+5):
+                            data=data[data_size+5:]
+                        else:
+                            break
+                    elif(data_type==1):
+                        # type = set sessionType
+                        break #pass
+                    elif(data_type==2):
+                        # type = set userName
+                        c.setName(data[5:data_size+5].decode())
+                        del_client(id,counter_list)
+                        id=c.getName()
+                        add_client(id,counter_list,c)
+                        if(len(data)>data_size+5):
+                            data=data[data_size+5:]
+                        else:
+                            break
+                    elif(data_type==3):
+                        # type = text
+                        break #pass
+                    elif(data_type==4):
+                        # type = audioRawdata
+                        #print("data_type:",data_type)
+                        print("data_size:",data_size)
+                        print("total_size",len(data))
+                        timestamp=data[5:13].decode()
+                        c.add(timestamp,data[13:data_size+13])
+                        if(len(data)>data_size+13):
+                            data=data[data_size+13:]
+                        else:
+                            break
+                        #print(timestamp)
+                    elif(data_type==5):
+                        # type = fileName
+                        break #pass
+                    elif(data_type==6):
+                        # type = fileData
+                        break #pass
+                    elif(data_type==7):
+                        # type = manual correct Request
+                        break #pass
 
-            if data:
-                data_type=data[0]
-                data_size=int.from_bytes(data[1:5], "big")
-
-                if(data_type==0):
-                    # type = set sesssionName
-                    sessionName=data[5:].decode()
-                elif(data_type==1):
-                    # type = set sessionType
-                    pass
-                elif(data_type==2):
-                    # type = set userName
-                    c.setName(data[5:].decode())
-                    del_client(id,counter_list)
-                    id=c.getName()
-                    add_client(id,counter_list,c)
-                elif(data_type==3):
-                    # type = text
-                    pass
-                elif(data_type==4):
-                    # type = audioRawdata
-                    #print("data_type:",data_type)
-                    #print("data_size:",data_size)
-                    #print("total_size",len(data))
-                    timestamp=data[5:13].decode()
-                    #print(timestamp)
-
-                    c.add(timestamp,data[13:])
-                elif(data_type==5):
-                    # type = fileName
-                    pass
-                elif(data_type==6):
-                    # type = fileData
-                    pass
-                elif(data_type==7):
-                    # type = manual correct Request
-                    pass
-
-                #print(len(data))
+                    #print(len(data))
 
 
 
             if(time.time()-timer>5):
-                #pass
-                temp=c.getAll()
+                pass
+                #temp=c.getAll()
                 #f.write(bytes(temp)) #for test
-                dataQ.put((c.getTime(),c.getName(),temp))
-                c.resetTime()
-                timer=time.time()
+                #dataQ.put((c.getTime(),c.getName(),temp))
+                #c.resetTime()
+                #timer=time.time()
 
 
         # if connection is closed, then delete client information in client dictionary and close connection socket.
-        #f=open("zoom.raw","wb")
-        #f.write(bytes(c.getAll()))
-        #f.close()
+        f=open("zoom.raw","wb")
+        f.write(bytes(c.getAll()))
+        f.close()
         del_client(id,counter_list)
         c.getSock().close()
         del c
@@ -203,9 +214,9 @@ try:
     global sessionName
     sessionName=""
     thread_list=[]
-    tt=threading.Thread(target= audio2caption,args=())
-    tt.daemon=True
-    tt.start()
+    #tt=threading.Thread(target= audio2caption,args=())
+    #tt.daemon=True
+    #tt.start()
 
 
 

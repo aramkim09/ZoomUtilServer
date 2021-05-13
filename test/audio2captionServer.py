@@ -11,7 +11,7 @@ import client
 import queue
 
 # Imports the Google Cloud client library
-from google.cloud import speech
+#from google.cloud import speech
 import os
 """
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]='/home/ubuntu/workspace/stt/stt_key/rock-idiom-279803-becd74ae58f1.json'
@@ -144,7 +144,13 @@ try:
                     pass
                 elif(data_type==4):
                     # type = audioRawdata
-                    c.add(data[5:])
+                    print("data_type:",data_type)
+                    print("data_size:",data_size)
+                    print("total_size",len(data))
+                    timestamp=data[5:13].decode()
+                    print(timestamp)
+
+                    c.add(data[13:])
                 elif(data_type==5):
                     # type = fileName
                     pass

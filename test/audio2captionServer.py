@@ -9,7 +9,7 @@ import time
 import threading
 import client
 import queue
-"""
+
 # Imports the Google Cloud client library
 from google.cloud import speech
 import os
@@ -28,12 +28,11 @@ config = speech.RecognitionConfig(
     speech_contexts=[speech_context],
 )
 
-"""
+
 
 
 
 try:
-    """
     # function for STT thread : every 5 sec send bytes to STT api
     def audio2caption():
         global dataQ
@@ -67,7 +66,7 @@ try:
                     #print(type(result.alternatives[0].transcript))
                     print("[{}] {}: {}".format(item[0],item[1],result.alternatives[0].transcript))
                     talkQ.put((item[0],item[1],result.alternatives[0].transcript))
-    """
+
 
 
 
@@ -125,6 +124,7 @@ try:
             except Exception :
                 break
             if(data):
+                #print(len(data))
                 while(True):
                     data_type=data[0]
                     data_size=int.from_bytes(data[1:5], "big")
@@ -155,8 +155,8 @@ try:
                     elif(data_type==4):
                         # type = audioRawdata
                         #print("data_type:",data_type)
-                        print("data_size:",data_size)
-                        print("total_size",len(data))
+                        #print("data_size:",data_size)
+                        #print("total_size",len(data))
                         timestamp=data[5:13].decode()
                         c.add(timestamp,data[13:data_size+13])
                         if(len(data)>data_size+13):
@@ -173,24 +173,26 @@ try:
                     elif(data_type==7):
                         # type = manual correct Request
                         break #pass
-
+                    else:
+                        # cannot decode data, so discard
+                        break
                     #print(len(data))
 
 
 
             if(time.time()-timer>5):
-                pass
-                #temp=c.getAll()
+                #pass
+                temp=c.getAll()
                 #f.write(bytes(temp)) #for test
-                #dataQ.put((c.getTime(),c.getName(),temp))
-                #c.resetTime()
-                #timer=time.time()
+                dataQ.put((c.getTime(),c.getName(),temp))
+                c.resetTime()
+                timer=time.time()
 
 
         # if connection is closed, then delete client information in client dictionary and close connection socket.
-        f=open("zoom.raw","wb")
-        f.write(bytes(c.getAll()))
-        f.close()
+        #f=open("zoom.raw","wb")
+        #f.write(bytes(c.getAll()))
+        #f.close()
         del_client(id,counter_list)
         c.getSock().close()
         del c
@@ -214,9 +216,9 @@ try:
     global sessionName
     sessionName=""
     thread_list=[]
-    #tt=threading.Thread(target= audio2caption,args=())
-    #tt.daemon=True
-    #tt.start()
+    tt=threading.Thread(target= audio2caption,args=())
+    tt.daemon=True
+    tt.start()
 
 
 

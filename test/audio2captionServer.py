@@ -144,7 +144,7 @@ try:
                     pass
                 elif(data_type==4):
                     # type = audioRawdata
-                    c.add(data)
+                    c.add(data[5:])
                 elif(data_type==5):
                     # type = fileName
                     pass

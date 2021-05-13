@@ -10,6 +10,12 @@ class client:
         self.sock=""
         self.address=""
 
+    def __init__(self,input_name,input_sock,input_addr):
+        self.bytequeue=bytearray()
+        self.name=input_name
+        self.sock=input_sock
+        self.address=input_addr
+
     def setAddress(self,input):
         self.address=input
 

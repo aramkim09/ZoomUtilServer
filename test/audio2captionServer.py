@@ -13,7 +13,7 @@ import queue
 # Imports the Google Cloud client library
 from google.cloud import speech
 import os
-
+"""
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]='/home/ubuntu/workspace/stt/stt_key/rock-idiom-279803-becd74ae58f1.json'
 
 # Instantiates a client
@@ -27,19 +27,20 @@ config = speech.RecognitionConfig(
     language_code="ko-KR",
     speech_contexts=[speech_context],
 )
-
+"""
 
 
 
 
 try:
+    """
     # function for STT thread : every 5 sec send bytes to STT api
     def audio2caption():
-        global datas
+        global dataQ
         time.sleep(8)
         while True:
             #time.sleep(5)
-            if(datas.qsize()<=0):
+            if(dataQ.qsize()<=0):
                 time.sleep(5)
                 continue
             else:
@@ -47,14 +48,14 @@ try:
                 lock = threading.Lock()
                 lock.acquire()
 
-                item=datas.get()
+                item=dataQ.get()
                 lock.release()
 
                 content=bytes(item[1])
                 #print("content",len(content))
 
 
-                #print("id",id(datas))
+                #print("id",id(dataQ))
 
 
                 audio = speech.RecognitionAudio(content=content)
@@ -64,17 +65,18 @@ try:
                     #print("im in2")
                     #print(type(result.alternatives[0].transcript))
                     print("{}: {}".format(item[0],result.alternatives[0].transcript))
+    """
 
 
     def add_data(data):
 
-        global datas
+        global dataQ
         lock = threading.Lock()
         lock.acquire()
         #print("data:",len(data))
-        #print("datas",len(datas))
-        datas.put(data)
-        #print("datas",len(datas))
+        #print("dataQ",len(dataQ))
+        dataQ.put(data)
+        #print("dataQ",len(dataQ))
 
         lock.release()
 
@@ -106,7 +108,8 @@ try:
 
     # function for each client thread : communicate with each client
     def client_thread(counter_list,c):
-        global datas
+        global dataQ
+        global sessionName
 
         id=c.getName()
         add_client(id,counter_list,c)
@@ -121,17 +124,51 @@ try:
 
 
             if data:
+                data_type=data[0]
+                data_size=int.from_bytes(data[1:5], "big")
+
+                if(data_type==0):
+                    # type = set sesssionName
+                    sessionName=data[5:].decode()
+                elif(data_type==1):
+                    # type = set sessionType
+                    pass
+                elif(data_type==2):
+                    # type = set userName
+                    c.setName(data[5:].decode())
+                    del_client(id,counter_list)
+                    id=c.getName()
+                    add_client(id,counter_list,c)
+                elif(data_type==3):
+                    # type = text
+                    pass
+                elif(data_type==4):
+                    # type = audioRawdata
+                    c.add(data)
+                elif(data_type==5):
+                    # type = fileName
+                    pass
+                elif(data_type==6):
+                    # type = fileData
+                    pass
+                elif(data_type==7):
+                    # type = manual correct Request
+                    pass
+
                 #print(len(data))
-                c.add(data)
+
 
 
             if(time.time()-timer>5):
-                #add_data(c.getAll())
-                datas.put((c.getName(),c.getAll()))
-                timer=time.time()
+                pass
+                #dataQ.put((c.getName(),c.getAll()))
+                #timer=time.time()
 
 
         # if connection is closed, then delete client information in client dictionary and close connection socket.
+        f=open("zoom.raw","wb")
+        f.write(bytes(c.getAll()))
+        f.close()
         del_client(id,counter_list)
         c.getSock().close()
         del c
@@ -148,11 +185,13 @@ try:
     # make client dictionary and id value for new client
     client_list={} # client dictinoray is comprised of userID:clientObject
     id_counter=1
-    global datas # total audio queue
-    datas=queue.Queue()
-    tt=threading.Thread(target= audio2caption,args=())
-    tt.daemon=True
-    tt.start()
+    global dataQ # total audio queue
+    dataQ=queue.Queue()
+    global sessionName
+    sessionName=""
+    #tt=threading.Thread(target= audio2caption,args=())
+    #tt.daemon=True
+    #tt.start()
 
 
 
@@ -160,16 +199,7 @@ try:
 
         # wait client connection.if connection request exist, make socket for client (=connection socket)
         (connectionSocket, clientAddress) = serverSocket.accept()
-        c=client.client()
-        data = connectionSocket.recv(4096)
-        if data:
-            c.setName(data.decode())
-        else:
-            c.setName(id_counter)
-
-        c.setSock(connectionSocket)
-        c.setAddress(clientAddress)
-
+        c=client.client(id_counter,connectionSocket,clientAddress)
 
         # make thread and give socket and client ID
         t=threading.Thread(target=client_thread,args=(client_list,c))

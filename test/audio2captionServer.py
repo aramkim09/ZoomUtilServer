@@ -68,11 +68,11 @@ try:
                     talkQ.put((item[0],item[1],result.alternatives[0].transcript))
 
     # function for sending and saving transcript thread : every 5 sec send transcript to client
-    def caption2client():
+    def caption2client(client_list):
         global talkQ
         time.sleep(8)
         while True:
-            time.sleep(2)
+            time.sleep(1)
             if(talkQ.qsize()<=0):
                 time.sleep(5)
                 continue
@@ -85,13 +85,15 @@ try:
                 lock.release()
 
                 # item = (timestamp,username,transcript)
-                length=int.to_bytes(len(item[1]+":"+item[2]), 4,byteorder="big")
-                data=bytes([type])+length+item[0].encode()+(item[1]+":"+item[2]).encode()
-                # data = type+datasize+timestamp+data(username+":"+transcript)
-                try:
-                    connectionSocket.send(data)
-                except Exception:
-                    break
+                a=(item[1]+":"+item[2]).encode()+bytes(1)
+                length=int.to_bytes(len(a), 4,byteorder="big")
+                data=bytes([type])+length+item[0].encode()+bytes(1)+a
+                # data = type+datasize+timestamp(+bytes)+data(username+":"+transcript+bytes)
+                for i in client_list:
+                    try:
+                        client_list[i].getSock().send(data)
+                    except Exception:
+                        continue
 
 
 

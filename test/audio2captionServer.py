@@ -67,9 +67,11 @@ try:
                     print("[{}] {}: {}".format(item[0],item[1],result.alternatives[0].transcript))
                     talkQ.put((item[0],item[1],result.alternatives[0].transcript))
 
-    # function for sending and saving transcript thread : every 5 sec send transcript to client
+    # function for sending and saving transcript to dbQ thread
     def caption2client(client_list):
         global talkQ
+        global dbQ
+        lock = threading.Lock()
         time.sleep(8)
         while True:
             time.sleep(1)
@@ -78,10 +80,14 @@ try:
                 continue
             else:
 
-                lock = threading.Lock()
+
                 lock.acquire()
 
                 item=talkQ.get()
+                lock.release()
+
+                lock.acquire()
+                dbQ.put(item)
                 lock.release()
 
                 # item = (timestamp,username,transcript)
@@ -89,12 +95,20 @@ try:
                 length=int.to_bytes(len(a), 4,byteorder="big")
                 data=bytes([type])+length+item[0].encode()+bytes(1)+a
                 # data = type+datasize+timestamp(+bytes)+data(username+":"+transcript+bytes)
-                for i in client_list:
-                    try:
-                        client_list[i].getSock().send(data)
-                    except Exception:
-                        continue
+                # make subthread sending data to all client
+                t=threading.Thread(target=send_all,args=(client_list,data))
+                t.daemon=True
+                t.start()
 
+
+
+    def send_all(client_list,data):
+
+        for i in client_list:
+            try:
+                client_list[i].getSock().send(data)
+            except Exception:
+                continue
 
 
 
@@ -242,12 +256,18 @@ try:
     dataQ=queue.Queue()
     global talkQ
     talkQ=queue.Queue()
+    global dbQ
+    dbQ=queue.Queue()
     global sessionName
     sessionName=""
     thread_list=[]
     tt=threading.Thread(target= audio2caption,args=())
     tt.daemon=True
     tt.start()
+
+    t=threading.Thread(target=caption2client,args=(client_list))
+    t.daemon=True
+    t.start()
 
 
 

@@ -8,6 +8,7 @@ from socket import *
 import time
 import threading
 import client
+import queue
 
 
 # Imports the Google Cloud client library
@@ -57,7 +58,6 @@ try:
 
                 #print("id",id(dataQ))
 
-
                 audio = speech.RecognitionAudio(content=content)
                 response = stt_client.recognize(config=config, audio=audio)
                 #print("im in")
@@ -72,6 +72,8 @@ try:
         global talkQ
         global dbQ
         lock = threading.Lock()
+        type=0
+
         time.sleep(8)
         while True:
             time.sleep(1)
@@ -174,11 +176,12 @@ try:
 
                     if(data_type==0):
                         # type = set sesssionName
-                        sessionName=data[5:data_size+5].decode()
-                        if(len(data)>data_size+5):
-                            data=data[data_size+5:]
-                        else:
-                            break
+                        pass
+                        #sessionName=data[5:data_size+5].decode()
+                        #if(len(data)>data_size+5):
+                        #    data=data[data_size+5:]
+                        #else:
+                        #    break
                     elif(data_type==1):
                         # type = set sessionType
                         break #pass
@@ -265,7 +268,7 @@ try:
     tt.daemon=True
     tt.start()
 
-    t=threading.Thread(target=caption2client,args=(client_list))
+    t=threading.Thread(target=caption2client,args=(client_list,))
     t.daemon=True
     t.start()
 

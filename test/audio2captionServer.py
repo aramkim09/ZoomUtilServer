@@ -8,7 +8,7 @@ from socket import *
 import time
 import threading
 import client
-import queue
+
 
 # Imports the Google Cloud client library
 from google.cloud import speech
@@ -66,6 +66,33 @@ try:
                     #print(type(result.alternatives[0].transcript))
                     print("[{}] {}: {}".format(item[0],item[1],result.alternatives[0].transcript))
                     talkQ.put((item[0],item[1],result.alternatives[0].transcript))
+
+    # function for sending and saving transcript thread : every 5 sec send transcript to client
+    def caption2client():
+        global talkQ
+        time.sleep(8)
+        while True:
+            time.sleep(2)
+            if(talkQ.qsize()<=0):
+                time.sleep(5)
+                continue
+            else:
+
+                lock = threading.Lock()
+                lock.acquire()
+
+                item=talkQ.get()
+                lock.release()
+
+                # item = (timestamp,username,transcript)
+                length=int.to_bytes(len(item[1]+":"+item[2]), 4,byteorder="big")
+                data=bytes([type])+length+item[0].encode()+(item[1]+":"+item[2]).encode()
+                # data = type+datasize+timestamp+data(username+":"+transcript)
+                try:
+                    connectionSocket.send(data)
+                except Exception:
+                    break
+
 
 
 

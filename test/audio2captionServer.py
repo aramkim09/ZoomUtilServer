@@ -256,7 +256,7 @@ try:
     client_list={} # client dictinoray is comprised of userID:clientObject
     id_counter=1
     global dataQ # total audio queue
-    dataQ=queue.Queue()
+    dataQ=queue.PriorityQueue()#queue.Queue()
     global talkQ
     talkQ=queue.Queue()
     global dbQ

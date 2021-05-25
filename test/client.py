@@ -1,6 +1,6 @@
 # define client class
 #import threading
-
+import threading
 
 class client:
 
@@ -10,6 +10,8 @@ class client:
         self.sock=""
         self.address=""
         self.timestamp=""
+        self.lock = threading.Lock()
+
 
     def __init__(self,input_name,input_sock,input_addr):
         self.bytequeue=bytearray()
@@ -17,6 +19,7 @@ class client:
         self.sock=input_sock
         self.address=input_addr
         self.timestamp=""
+        self.lock = threading.Lock()
 
     def setAddress(self,input):
         self.address=input
@@ -46,9 +49,13 @@ class client:
         # data format should be tuple (string->timestamp,bytes->audioRawdata)
         if(self.timestamp==""):
             self.timestamp=time
+        self.lock.acquire()
         self.bytequeue=self.bytequeue+data
+        self.lock.release()
 
     def getAll(self):
+        self.lock.acquire()
         return_value=self.bytequeue[:]
         self.bytequeue.clear()
+        self.lock.release()
         return return_value

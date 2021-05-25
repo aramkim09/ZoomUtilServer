@@ -20,13 +20,13 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"]='/home/ubuntu/workspace/stt/stt_key
 # Instantiates a client
 stt_client = speech.SpeechClient()
 
-speech_context = speech.SpeechContext(phrases=["$TIME"]) # read file and add context
+#speech_context = speech.SpeechContext(phrases=["$TIME"]) # read file and add context
 
 config = speech.RecognitionConfig(
     encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
     sample_rate_hertz=32000,
     language_code="ko-KR",
-    speech_contexts=[speech_context],
+    #speech_contexts=[speech_context],
 )
 
 
@@ -36,6 +36,8 @@ config = speech.RecognitionConfig(
 try:
     # function for STT thread : every 5 sec send bytes to STT api
     def audio2caption():
+
+        print("STT Thread")
         global dataQ
         global talkQ
         time.sleep(8)
@@ -54,9 +56,10 @@ try:
 
                 content=bytes(item[2])
                 #print("content",len(content))
+                if not content:
+                    continue
 
-
-                #print("id",id(dataQ))
+                print(len(content))
 
                 audio = speech.RecognitionAudio(content=content)
                 response = stt_client.recognize(config=config, audio=audio)
@@ -64,11 +67,15 @@ try:
                 for result in response.results:
                     #print("im in2")
                     #print(type(result.alternatives[0].transcript))
+                    if not result.alternatives[0].transcript:
+                        continue
                     print("[{}] {}: {}".format(item[0],item[1],result.alternatives[0].transcript))
                     talkQ.put((item[0],item[1],result.alternatives[0].transcript))
 
     # function for sending and saving transcript to dbQ thread
     def caption2client(client_list):
+
+        print("Caption 2 client Thread")
         global talkQ
         global dbQ
         lock = threading.Lock()
@@ -165,11 +172,12 @@ try:
         while True:
             # receive binary data(ex-audio) from connected client
             try:
-                data = c.getSock().recv(4096)
+                data = c.getSock().recv(320000)
             except Exception :
                 break
             if(data):
                 #print(len(data))
+
                 while(True):
                     data_type=data[0]
                     data_size=int.from_bytes(data[1:5], "big")
@@ -186,8 +194,18 @@ try:
                         # type = set sessionType
                         break #pass
                     elif(data_type==2):
+                        if(len(data)<6):
+
+                            break
                         # type = set userName
-                        c.setName(data[5:data_size+5].decode())
+                        try:
+                            c.setName(data[5:data_size+5].decode())
+                        except:
+                            print("[Error]")
+                            print("type:",data_type)
+                            print("total size:",len(data))
+                            print("data_size:",data_size)
+                            break
                         del_client(id,counter_list)
                         id=c.getName()
                         add_client(id,counter_list,c)
@@ -199,11 +217,22 @@ try:
                         # type = text
                         break #pass
                     elif(data_type==4):
+                        if(len(data)<14):
+                            break
+
                         # type = audioRawdata
                         #print("data_type:",data_type)
                         #print("data_size:",data_size)
                         #print("total_size",len(data))
-                        timestamp=data[5:13].decode()
+                        try:
+                            timestamp=data[5:13].decode()
+                        except:
+                            print("[Error]")
+                            print("type:",data_type)
+                            print("total size:",len(data))
+                            print("data_size:",data_size)
+                            break
+                        #f.write(data[13:data_size+13])
                         c.add(timestamp,data[13:data_size+13])
                         if(len(data)>data_size+13):
                             data=data[data_size+13:]
@@ -295,7 +324,7 @@ except KeyboardInterrupt:
     # if there is KeyboardInterrupt, then close all socket and finish the program.
     # soon add stopping all sub thread
 
-    print("all transcript")
+    print("\nall transcript")
     while(talkQ.qsize()>0):
         i=talkQ.get()
         print("[",i[0],"]",i[1],":",i[2])

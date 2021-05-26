@@ -40,21 +40,45 @@ try:
         print("STT Thread")
         global dataQ
         global talkQ
-        time.sleep(8)
+        lock = threading.Lock()
+        buffer=None #buffer for dataQ
+        bytequeue=bytearray()
+        name=""
+        timestamp=""
+        time.sleep(5)
+
         while True:
             #time.sleep(5)
             if(dataQ.qsize()<=0):
-                time.sleep(5)
+                time.sleep(3)
                 continue
             else:
+                if buffer:
+                    name=buffer[1]
+                    timestamp=buffer[0]
+                    bytequeue=bytequeue+buffer[2]
+                    buffer=None
 
-                lock = threading.Lock()
-                lock.acquire()
+                start=time.time()
+                while True:
+                    lock.acquire()
+                    item=dataQ.get()
+                    lock.release()
+                    if(name==""):
+                        name=item[1]
+                        timestamp=item[0]
+                        bytequeue=bytequeue+item[2]
+                    elif name==item[1]:
+                        bytequeue=bytequeue+item[2]
+                        if(time.time()-end>3):
+                            break
+                    else:
+                        buffer=item
+                        break
 
-                item=dataQ.get()
-                lock.release()
 
-                content=bytes(item[2])
+                content=bytes(bytequeue[:])
+                bytequeue.clear()
                 #print("content",len(content))
                 if not content:
                     continue
@@ -63,14 +87,19 @@ try:
 
                 audio = speech.RecognitionAudio(content=content)
                 response = stt_client.recognize(config=config, audio=audio)
+                send_name=name[:]
+                send_time=timestamp[:]
+                name=""
+                timestamp=""
+
                 #print("im in")
                 for result in response.results:
                     #print("im in2")
                     #print(type(result.alternatives[0].transcript))
                     if not result.alternatives[0].transcript:
                         continue
-                    print("[{}] {}: {}".format(item[0],item[1],result.alternatives[0].transcript))
-                    talkQ.put((item[0],item[1],result.alternatives[0].transcript))
+                    print("[{}] {}: {}".format(send_time,send_name,result.alternatives[0].transcript))
+                    talkQ.put((send_time,send_name,result.alternatives[0].transcript))
 
     # function for sending and saving transcript to dbQ thread
     def caption2client(client_list):
@@ -217,7 +246,7 @@ try:
                         # type = text
                         break #pass
                     elif(data_type==4):
-                        if(len(data)<14):
+                        if(len(data)<18):
                             break
 
                         # type = audioRawdata
@@ -232,10 +261,21 @@ try:
                             print("total size:",len(data))
                             print("data_size:",data_size)
                             break
-                        #f.write(data[13:data_size+13])
-                        c.add(timestamp,data[13:data_size+13])
-                        if(len(data)>data_size+13):
-                            data=data[data_size+13:]
+
+                        user_name_size=int.from_bytes(data[13:17], "big")
+                        try:
+                            user_name=data[17:17+user_name_size].decode()
+                        except:
+                            print("[Error]")
+                            print("type:",data_type)
+                            print("total size:",len(data))
+                            print("data_size:",data_size)
+                            print("name_size",user_name_size)
+                            break
+                        dataQ.put((timestamp,user_name,data[17+user_name_size:data_size+17+user_name_size]))
+                        #c.add(timestamp,data[17+user_name_size:data_size+17+user_name_size])
+                        if(len(data)>data_size+17+user_name_size):
+                            data=data[data_size+17+user_name_size:]
                         else:
                             break
                         #print(timestamp)
@@ -254,14 +294,14 @@ try:
                     #print(len(data))
 
 
-
+            """
             if(time.time()-timer>5):
                 #pass
                 temp=c.getAll()
                 #f.write(bytes(temp)) #for test
                 dataQ.put((c.getTime(),c.getName(),temp))
                 c.resetTime()
-                timer=time.time()
+                timer=time.time()"""
 
 
         # if connection is closed, then delete client information in client dictionary and close connection socket.
@@ -285,7 +325,7 @@ try:
     client_list={} # client dictinoray is comprised of userID:clientObject
     id_counter=1
     global dataQ # total audio queue
-    dataQ=queue.PriorityQueue()#queue.Queue()
+    dataQ=queue.Queue()#queue.PriorityQueue()#queue.Queue()
     global talkQ
     talkQ=queue.Queue()
     global dbQ

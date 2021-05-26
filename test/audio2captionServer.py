@@ -70,7 +70,7 @@ try:
                         bytequeue=bytequeue+item[2]
                     elif name==item[1]:
                         bytequeue=bytequeue+item[2]
-                        if(time.time()-end>3):
+                        if(time.time()-start>3):
                             break
                     else:
                         buffer=item
@@ -83,7 +83,7 @@ try:
                 if not content:
                     continue
 
-                print(len(content))
+                #print(len(content))
 
                 audio = speech.RecognitionAudio(content=content)
                 response = stt_client.recognize(config=config, audio=audio)
@@ -229,6 +229,10 @@ try:
                         # type = set userName
                         try:
                             c.setName(data[5:data_size+5].decode())
+                            #print("name byte")
+                            #for i in data[5:data_size+5]:
+                                #print(hex(i)," ",i)
+
                         except:
                             print("[Error]")
                             print("type:",data_type)
@@ -263,14 +267,22 @@ try:
                             break
 
                         user_name_size=int.from_bytes(data[13:17], "big")
+                        #print("user_name_size",user_name_size)
                         try:
                             user_name=data[17:17+user_name_size].decode()
+                            #int.from_bytes(data[17:17+user_name_size], "little")
+                            #print("name byte")
+                            #for i in data[17:17+user_name_size]:
+                                #print(hex(i)," ",i)
+                            #print("user_name:",user_name)
                         except:
                             print("[Error]")
                             print("type:",data_type)
                             print("total size:",len(data))
                             print("data_size:",data_size)
                             print("name_size",user_name_size)
+                            #int.from_bytes(data[17:17+user_name_size], "little"
+
                             break
                         dataQ.put((timestamp,user_name,data[17+user_name_size:data_size+17+user_name_size]))
                         #c.add(timestamp,data[17+user_name_size:data_size+17+user_name_size])

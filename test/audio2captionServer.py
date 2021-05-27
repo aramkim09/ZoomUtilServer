@@ -34,10 +34,14 @@ config = speech.RecognitionConfig(
 
 
 try:
+
+    #def sub_STT():
+
+
     # function for STT thread : every 5 sec send bytes to STT api
     def audio2caption():
 
-        print("STT Thread")
+        #print("STT Thread")
         global dataQ
         global talkQ
         lock = threading.Lock()
@@ -45,6 +49,8 @@ try:
         bytequeue=bytearray()
         name=""
         timestamp=""
+        sttQ=queue.PriorityQueue()
+        user_audio={}
         time.sleep(5)
 
         while True:
@@ -53,17 +59,34 @@ try:
                 time.sleep(3)
                 continue
             else:
+                """
                 if buffer:
                     name=buffer[1]
                     timestamp=buffer[0]
                     bytequeue=bytequeue+buffer[2]
-                    buffer=None
+                    buffer=None"""
 
                 start=time.time()
                 while True:
                     lock.acquire()
-                    item=dataQ.get()
+                    item=dataQ.get() # item[0]=time item[1]=name item[2]=data
                     lock.release()
+
+                    if item[1] in user_audio:
+                        if(user_audio[item[1]]==None):
+                            user_audio[item[1]]=list(item)
+                        else:
+                            user_audio[item[1]][2]=user_audio[item[1]][2]+item[2]
+                    else:
+                        user_audio[item[1]]=list(item)
+                    if(time.time()-start>2):
+                        for k in user_audio:
+                            if(len(user_audio[k][2])>250000):
+                                sttQ.put(list(user_audio[k]))
+                                user_audio[k]=None
+                        break
+
+                        """
                     if(name==""):
                         name=item[1]
                         timestamp=item[0]
@@ -74,37 +97,39 @@ try:
                             break
                     else:
                         buffer=item
-                        break
+                        break"""
+                while sttQ.qsize()>0:
 
+                    stt_item=sttQ.get()
 
-                content=bytes(bytequeue[:])
-                bytequeue.clear()
-                #print("content",len(content))
-                if not content:
-                    continue
-
-                #print(len(content))
-
-                audio = speech.RecognitionAudio(content=content)
-                response = stt_client.recognize(config=config, audio=audio)
-                send_name=name[:]
-                send_time=timestamp[:]
-                name=""
-                timestamp=""
-
-                #print("im in")
-                for result in response.results:
-                    #print("im in2")
-                    #print(type(result.alternatives[0].transcript))
-                    if not result.alternatives[0].transcript:
+                    content=bytes(stt_item[2][:])
+                    #bytequeue.clear()
+                    #print("content",len(content))
+                    if not content:
                         continue
-                    print("[{}] {}: {}".format(send_time,send_name,result.alternatives[0].transcript))
-                    talkQ.put((send_time,send_name,result.alternatives[0].transcript))
+
+                    print(len(content))
+
+                    audio = speech.RecognitionAudio(content=content)
+                    response = stt_client.recognize(config=config, audio=audio)
+                    send_name=stt_item[1][:]
+                    send_time=stt_item[0][:]
+                    #name=""
+                    #timestamp=""
+
+                    #print("im in")
+                    for result in response.results:
+                        #print("im in2")
+                        #print(type(result.alternatives[0].transcript))
+                        if not result.alternatives[0].transcript:
+                            continue
+                        print("[{}] {}: {}".format(send_time,send_name,result.alternatives[0].transcript))
+                        talkQ.put((send_time,send_name,result.alternatives[0].transcript))
 
     # function for sending and saving transcript to dbQ thread
     def caption2client(client_list):
 
-        print("Caption 2 client Thread")
+        #print("Caption 2 client Thread")
         global talkQ
         global dbQ
         lock = threading.Lock()

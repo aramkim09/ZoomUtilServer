@@ -9,7 +9,9 @@ import time
 import threading
 import client
 import queue
-
+import json
+# for making STT dataset
+import makeSttDataset as msd
 
 # Imports the Google Cloud client library
 from google.cloud import speech
@@ -19,9 +21,9 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"]='/home/ubuntu/workspace/stt/stt_key
 
 # Instantiates a client
 stt_client = speech.SpeechClient()
-
-#speech_context = speech.SpeechContext(phrases=["$TIME"]) # read file and add context
-
+global speech_context
+speech_context = speech.SpeechContext(phrases=[]) # read file and add context
+global config
 config = speech.RecognitionConfig(
     encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
     sample_rate_hertz=32000,
@@ -35,13 +37,37 @@ config = speech.RecognitionConfig(
 
 try:
 
+    def makeDataset(filename):
+
+        global stt_context
+        global config
+
+        msd.make_dataset(filename)
+        with open('/home/ubuntu/workspace/demo/json/PDFPPT_dataset.json',encoding="utf8") as json_file:
+            json_data=json.load(json_file)
+            json_context=json_data['speechContexts']
+            json_phrase=json_context[0]['phrases']
+        speech_context = speech.SpeechContext(phrases=json_phrase)
+        config = speech.RecognitionConfig(
+            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+            sample_rate_hertz=32000,
+            language_code="ko-KR",
+            speech_contexts=[speech_context],
+        )
+
     def sub_STT(sttQ):
+        global config
+        buffer=None#for test
         time.sleep(5)
         while True:
             if(sttQ.qsize()>0):
                 stt_item=sttQ.get()
-
+                #if buffer!=None:
+                #content=bytes(buffer[2][:]+stt_item[2][:])
+                #else:
                 content=bytes(stt_item[2][:])
+
+                #buffer=stt_item
                 #bytequeue.clear()
                 #print("content",len(content))
                 if not content:
@@ -67,6 +93,16 @@ try:
             else:
                 time.sleep(1)
 
+    def timer(sttQ,user_audio,name):
+        user_name=name
+        lock = threading.Lock()
+        while True:
+            time.sleep(3)
+            lock.acquire()
+            if user_audio[user_name]!=None:
+                sttQ.put(user_audio[user_name])
+                user_audio[user_name]=None
+            lock.release()
 
     # function for STT thread : every 5 sec send bytes to STT api
     def audioProcessing():
@@ -81,11 +117,15 @@ try:
         #timestamp=""
         sttQ=queue.PriorityQueue()
         user_audio={}
+        user_time={}
 
         t=threading.Thread(target=sub_STT,args=(sttQ,))
         t.daemon=True
         t.start()
-        time.sleep(5)
+        time.sleep(2)
+        start=time.time()
+
+        ### sholud make each timeout for each client
 
         while True:
             #time.sleep(5)
@@ -93,14 +133,34 @@ try:
                 item=dataQ.get() # item[0]=time item[1]=name item[2]=data
                 if item[1] in user_audio:
                     if(user_audio[item[1]]==None):
+                        lock.acquire()
                         user_audio[item[1]]=list(item)
+                        lock.release()
+                        user_time[item[1]]=time.time()
                     else:
+                        lock.acquire()
                         user_audio[item[1]][2]=user_audio[item[1]][2]+item[2]
-                        if(len(user_audio[item[1]][2])>250000):
-                            sttQ.put(user_audio[item[1]])
-                            user_audio[item[1]]=None
+                        lock.release()
+                        #if(len(user_audio[item[1]][2])>250000):#if(time.time()-user_time[item[1]]>3):#if(len(user_audio[item[1]][2])>200000):
+                            #sttQ.put(user_audio[item[1]])
+                            #user_audio[item[1]]=None
+                            #user_time[item[1]]=time.time()
+                        #lock.release()
+
                 else:
                     user_audio[item[1]]=list(item)
+                    user_time[item[1]]=time.time()
+                    t=threading.Thread(target=timer,args=(sttQ,user_audio,item[1]))
+                    t.daemon=True
+                    t.start()
+                #if(time.time()-start>1):
+                    #for i in user_time:
+                        #if(time.time()-user_time[i]>3):
+                            #sttQ.put(user_audio[item[1]])
+                            #user_audio[item[1]]=None
+                            #user_time[i]=time.time()
+                    #start=time.time()
+
             else:
                 time.sleep(1)
 
@@ -197,7 +257,7 @@ try:
         lock.release()
 
 
-    # function for each client thread : communicate with each client
+    # function for host thread : communicate with host
     def client_thread(counter_list,c):
         global dataQ
         global sessionName
@@ -205,11 +265,15 @@ try:
         id=c.getName()
         add_client(id,counter_list,c)
         timer=time.time()
-
+        file_name=""
+        file_data=bytearray()
+        stop=False # for flag
+        file_size=0
+        send_counter=1
         while True:
             # receive binary data(ex-audio) from connected client
             try:
-                data = c.getSock().recv(320000)
+                data = c.getSock().recv(3000000)
             except Exception :
                 break
             if(data):
@@ -217,7 +281,9 @@ try:
 
                 while(True):
                     data_type=data[0]
+                    #if(data_type!=6):
                     data_size=int.from_bytes(data[1:5], "big")
+
 
                     if(data_type==0):
                         # type = set sesssionName
@@ -301,10 +367,65 @@ try:
                         #print(timestamp)
                     elif(data_type==5):
                         # type = fileName
-                        break #pass
+                        #filename=""
+                        if(stop):
+                            if(len(data)>data_size+9):
+                                data=data[data_size+9:]
+                                continue
+                            else:
+                                break
+                        if(len(data)<6):
+
+                            break
+                        try:
+                            file_size=int.from_bytes(data[5:9], "big")
+                            file_name=data[9:data_size+9].decode() # ppt or pdf
+                            print("file_size",file_size)
+                            print(file_name)
+                            #for i in data[5:data_size+5]:
+                                #print(hex(i)," ",i)
+                            path='/home/ubuntu/workspace/demo/data/'
+                            f=open(path+file_name,"wb")
+
+                        except:
+                            print("[Error]")
+                            print("type:",data_type)
+                            print("total size:",len(data))
+                            print("data_size:",data_size)
+                            break
+                        if(len(data)>data_size+9):
+                            data=data[data_size+9:]
+                        else:
+                            break
+
+
                     elif(data_type==6):
                         # type = fileData
-                        break #pass
+                        if(stop):
+                            break
+                        if(len(data)<2):
+
+                            break
+
+                        note=data[5:5+data_size]
+                        if note:
+                            #print(len(file_data))
+                            file_data=file_data+note
+                            #1print(send_counter,"writing data sizeof",len(note),"| Total data size :",len(file_data))
+                            send_counter+=1
+                            if(len(file_data)>=file_size):
+                                print("finish downloading file")
+                                f.write(bytes(file_data))
+                                f.close()
+                                makeDataset(file_name)
+                                stop=True
+                                c.getSock().send("fin".encode())
+                        if(len(data)>data_size+5):
+                            data=data[data_size+5:]
+                        else:
+                            break
+
+                        #pass
                     elif(data_type==7):
                         # type = manual correct Request
                         break #pass
@@ -328,6 +449,7 @@ try:
         #f=open("zoom.raw","wb")
         #f.write(bytes(c.getAll()))
         #f.close()
+        print("connection closing",id)
         del_client(id,counter_list)
         c.getSock().close()
         del c

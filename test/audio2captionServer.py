@@ -10,12 +10,16 @@ import threading
 import client
 import queue
 import json
+import hgtk
+import csv
 # for making STT dataset
 import makeSttDataset as msd
 
 # Imports the Google Cloud client library
 from google.cloud import speech
 import os
+# for db
+import connect as con
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]='/home/ubuntu/workspace/stt/stt_key/rock-idiom-279803-becd74ae58f1.json'
 
@@ -88,7 +92,7 @@ try:
                     #print(type(result.alternatives[0].transcript))
                     if not result.alternatives[0].transcript:
                         continue
-                    print("[{}] {}: {}".format(send_time,send_name,result.alternatives[0].transcript))
+                    #print("[{}] {}: {}".format(send_time,send_name,result.alternatives[0].transcript))
                     talkQ.put((send_time,send_name,result.alternatives[0].transcript))
             else:
                 time.sleep(1)
@@ -207,6 +211,71 @@ try:
                 t.start()
 
 
+    def note2client(client_list):
+        global dbQ
+        global dataset
+        lock = threading.Lock()
+        type=1
+
+        while True:
+            time.sleep(1)
+            if(dbQ.qsize()<=0):
+                time.sleep(1)
+                continue
+
+            lock.acquire()
+            item=dbQ.get()
+            lock.release()
+
+
+            # correct caption by bojung algorithm
+            if(len(dataset)!=0):
+                pass
+
+
+            #send note 2 client and save to db
+            sql="INSERT INTO talk VALUES ("+"'"+item[1]+"'"+","+"'"+item[0]+"'"+","+"'"+item[2]+"'"+","+"'"+"'"+","+"0);"
+            con.curs.execute(sql)
+
+            # item = (timestamp,username,transcript)
+            a=(item[1]+":"+item[2]).encode()+bytes(1)
+            length=int.to_bytes(len(a), 4,byteorder="big")
+            data=bytes([type])+length+item[0].encode()+bytes(1)+a
+            # data = type+datasize+timestamp(+bytes)+data(username+":"+transcript+bytes)
+            # make subthread sending data to all client
+            t=threading.Thread(target=send_all,args=(client_list,data))
+            t.daemon=True
+            t.start()
+
+    def make_bojung_data(client_list):
+        global sessionType
+        global isNote
+        global loc
+        global dataset
+
+        if(isNote):
+            loc="/home/ubuntu/workspace/demo/dataset/afterset.txt"
+            fff = open(loc,'r', encoding='utf-8')
+            line=fff.read()
+            data_ls=line.split(',')
+            for i in data_ls:
+                if(hgtk.checker.is_hangul(i.strip())):
+                    dataset.append(i.strip())
+                    #print(data[-1])
+
+        else:
+            if(sessionType != None):
+                loc="/home/ubuntu/workspace/demo/dataset/example"+str(sessionType)+".csv"
+                f = open(loc,'r', encoding='utf-8')
+                rdr = csv.reader(f)
+                for line in rdr:
+                	dataset.append(line[0])
+
+        ttt=threading.Thread(target=note2client,args=(client_list,))
+        ttt.daemon=True
+        ttt.start()
+
+
 
     def send_all(client_list,data):
 
@@ -261,6 +330,8 @@ try:
     def client_thread(counter_list,c):
         global dataQ
         global sessionName
+        global sessionType
+        global isNote
         #f=open("zoom.raw","wb")
         id=c.getName()
         add_client(id,counter_list,c)
@@ -268,6 +339,7 @@ try:
         file_name=""
         file_data=bytearray()
         stop=False # for flag
+        stop2=False # for flag
         file_size=0
         send_counter=1
         while True:
@@ -295,7 +367,25 @@ try:
                         #    break
                     elif(data_type==1):
                         # type = set sessionType
-                        break #pass
+
+                        if(stop2):
+                            break
+                        #break #pass
+                        #print("sessionType:",data[5:data_size+5])
+                        sessionType=int.from_bytes(data[5:data_size+5], "little")
+                        print("sessionType:",sessionType)
+                        stop2=True
+                        # this part shold be add course note dataset
+                        ttt=threading.Thread(target=make_bojung_data,args=(client_list,))
+                        ttt.daemon=True
+                        ttt.start()
+
+                        if(len(data)>data_size+5):
+                            data=data[data_size+5:]
+                        else:
+                            break
+
+                        # 16 => art
                     elif(data_type==2):
                         if(len(data)<6):
 
@@ -420,6 +510,7 @@ try:
                                 makeDataset(file_name)
                                 stop=True
                                 c.getSock().send("fin".encode())
+                                isNote=True
                         if(len(data)>data_size+5):
                             data=data[data_size+5:]
                         else:
@@ -474,6 +565,14 @@ try:
     dbQ=queue.Queue()
     global sessionName
     sessionName=""
+    global sessionType
+    sessionType=None
+    global isNote
+    isNote=False
+    global loc
+    loc=""
+    global dataset
+    dataset=[]
     thread_list=[]
     tt=threading.Thread(target= audioProcessing,args=())
     tt.daemon=True
@@ -482,6 +581,7 @@ try:
     t=threading.Thread(target=caption2client,args=(client_list,))
     t.daemon=True
     t.start()
+
 
 
 
@@ -505,12 +605,14 @@ try:
 except KeyboardInterrupt:
     # if there is KeyboardInterrupt, then close all socket and finish the program.
     # soon add stopping all sub thread
-
+    lock = threading.Lock()
+    lock.acquire()
     print("\nall transcript")
     while(talkQ.qsize()>0):
         i=talkQ.get()
         print("[",i[0],"]",i[1],":",i[2])
     for i in client_list:
         client_list[i].getSock().close()
+    lock.release()
     serverSocket.close()
     print("\nBye bye~")
